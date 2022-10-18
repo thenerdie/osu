@@ -9,6 +9,8 @@ using osu.Game.Rulesets.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Difficulty.Skills;
 using osu.Game.Rulesets.Mania.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Mods;
+//using osu.Framework.Logging;
+//using System.Collections.Generic;
 
 namespace osu.Game.Rulesets.Mania.Difficulty.Skills
 {
@@ -28,6 +30,17 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
         private double individualStrain;
         private double overallStrain;
 
+        private double totalColumnsInMap;
+        private double handSplit;
+
+        private double[] anchorCount;
+        private double[] deltas;
+
+        private float minAnchor = 2;
+        private float maxAnchor = 12;
+
+        private double trillBuff = 0.83;
+
         public Strain(Mod[] mods, int totalColumns)
             : base(mods)
         {
@@ -35,6 +48,10 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
             endTimes = new double[totalColumns];
             individualStrains = new double[totalColumns];
             overallStrain = 1;
+            totalColumnsInMap = totalColumns;
+            anchorCount = new double[totalColumns];
+            deltas = new double[totalColumns];
+            handSplit = MathF.Floor(totalColumns / 2);
         }
 
         protected override double StrainValueOf(DifficultyHitObject current)
@@ -85,11 +102,42 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
             overallStrain = applyDecay(overallStrain, current.DeltaTime, overall_decay_base);
             overallStrain += (1 + holdAddition) * holdFactor;
 
+            double columnDelta = endTime - endTimes[column];
+
+            if (!Precision.DefinitelyBigger(deltas[column], columnDelta, 10))
+            {
+                this.anchorCount[column]++;
+            }
+            else
+            {
+                this.anchorCount[column] = 0;
+            }
+
+            double anchorCount = Math.Min(maxAnchor, this.anchorCount[column]);
+
+            if (anchorCount >= minAnchor)
+                individualStrain += 0.27 * anchorCount;
+
+            for (int adjacentColumn = Math.Max(0, column - 1); adjacentColumn < Math.Min(totalColumnsInMap - 1, column + 1); adjacentColumn++)
+            {
+                if (adjacentColumn == column)
+                    continue;
+
+                int minTime = 400;
+
+                if (startTimes[adjacentColumn] > startTimes[column] && startTime - startTimes[adjacentColumn] < minTime && this.anchorCount[adjacentColumn] < 2)
+                {
+                    individualStrain += trillBuff;
+                }
+            }
+
             // Update startTimes and endTimes arrays
             startTimes[column] = startTime;
             endTimes[column] = endTime;
+            deltas[column] = columnDelta;
 
             // By subtracting CurrentStrain, this skill effectively only considers the maximum strain of any one hitobject within each strain section.
+
             return individualStrain + overallStrain - CurrentStrain;
         }
 
