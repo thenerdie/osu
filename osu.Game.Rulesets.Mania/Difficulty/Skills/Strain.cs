@@ -104,27 +104,36 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
 
             double columnDelta = endTime - endTimes[column];
 
-            if (!Precision.DefinitelyBigger(deltas[column], columnDelta, 10))
-            {
-                this.anchorCount[column]++;
-            }
-            else
+            // If the difference between columnDeltas for the current note and last note is not greater than 10ms, we count this as an anchor, else break the anchor
+            // columnDelta is the difference between the current note's endTime and the last note's endTime
+            if (Precision.DefinitelyBigger(deltas[column], columnDelta, 10))
             {
                 this.anchorCount[column] = 0;
             }
+            else
+            {
+                this.anchorCount[column]++;
+            }
 
+            // we don't give any MORE buff past 12 notes in a row
             double anchorCount = Math.Min(maxAnchor, this.anchorCount[column]);
 
+            // if our anchor is over 2 notes long we apply the buff
             if (anchorCount >= minAnchor)
                 individualStrain += 0.27 * anchorCount;
 
+            // we check adjacent columns, starting with the column to the left of this note, if there is one
             for (int adjacentColumn = Math.Max(0, column - 1); adjacentColumn < Math.Min(totalColumnsInMap - 1, column + 1); adjacentColumn++)
             {
                 if (adjacentColumn == column)
                     continue;
 
+                // minimum millisecond delta for which we count two notes in adjacent columns as a "trill"
                 int minTime = 400;
 
+                // if the startTime for the column we're looking at now is later than the current note, we have the shape of a trill
+                // if the difference between the current startTime and the last one falls within our minimum threshold, we're good
+                // if there isn't an anchor in the column in the current note, we're also good
                 if (startTimes[adjacentColumn] > startTimes[column] && startTime - startTimes[adjacentColumn] < minTime && this.anchorCount[adjacentColumn] < 2)
                 {
                     individualStrain += trillBuff;
