@@ -140,7 +140,7 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
                 {
                     trillCount[column] = Math.Min(maxTrill, trillCount[column] + 1);
 
-                    individualStrain += individualStrains[adjacentColumn] * 0.2 * trillCount[column];
+                    individualStrain += individualStrains[adjacentColumn] * 0.23 * trillCount[column];
                 }
                 else
                 {
@@ -169,7 +169,7 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
 
             if (found >= (checkEnd - checkStart))
             {
-                individualStrain *= 0.37;
+                individualStrain *= 0.12;
             }
 
             // Update startTimes and endTimes arrays
