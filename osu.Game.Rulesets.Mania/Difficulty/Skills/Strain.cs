@@ -140,6 +140,7 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
                 {
                     trillCount[column] = Math.Min(maxTrill, trillCount[column] + 1);
 
+                    // we add a buff to repeated trills
                     individualStrain += individualStrains[adjacentColumn] * 0.23 * trillCount[column];
                 }
                 else
@@ -148,15 +149,15 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
                 }
             }
 
-            //float msNerfThreshold = 130;
-            //bool applyNerf = false;
-
             int checkStart = column >= handSplit ? handSplit : 0;
             int checkEnd = column >= handSplit ? totalColumnsInMap - 2 : handSplit - 1;
 
             int found = 0;
 
             // check hand for easy one-hand anchors
+            // we are assuming half of the playfield is for the left hand and the other half is for the right hand
+            // we go through all columns in the hand and check if there's a large anchor occuring in that hand
+            // if there is, or if the last note in the column we're checking was 2 seconds ago or more, we increment the number of anchors found
             for (int adjacentColumn = checkStart; adjacentColumn < checkEnd; adjacentColumn++)
             {
                 int nextAdjacentColumn = adjacentColumn + 1;
@@ -167,6 +168,7 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
                 }
             }
 
+            // if the number of anchors in the hand found is >= number of columns in the hand, we can apply our nerf
             if (found >= (checkEnd - checkStart))
             {
                 individualStrain *= 0.12;
