@@ -9,7 +9,7 @@ using osu.Game.Rulesets.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Difficulty.Skills;
 using osu.Game.Rulesets.Mania.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Mods;
-//using osu.Framework.Logging;
+using osu.Framework.Logging;
 //using System.Collections.Generic;
 
 namespace osu.Game.Rulesets.Mania.Difficulty.Skills
@@ -30,16 +30,17 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
         private double individualStrain;
         private double overallStrain;
 
-        private double totalColumnsInMap;
-        private double handSplit;
+        private int totalColumnsInMap;
+        private int handSplit;
 
-        private double[] anchorCount;
+        private int[] anchorCount;
+        private int[] trillCount;
         private double[] deltas;
 
-        private float minAnchor = 2;
-        private float maxAnchor = 12;
+        private int minAnchor = 2;
+        private int maxAnchor = 12;
 
-        private double trillBuff = 0.83;
+        private int maxTrill = 9;
 
         public Strain(Mod[] mods, int totalColumns)
             : base(mods)
@@ -49,9 +50,10 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
             individualStrains = new double[totalColumns];
             overallStrain = 1;
             totalColumnsInMap = totalColumns;
-            anchorCount = new double[totalColumns];
+            anchorCount = new int[totalColumns];
+            trillCount = new int[totalColumns];
             deltas = new double[totalColumns];
-            handSplit = MathF.Floor(totalColumns / 2);
+            handSplit = (int)MathF.Floor(totalColumns / 2);
         }
 
         protected override double StrainValueOf(DifficultyHitObject current)
@@ -104,9 +106,9 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
 
             double columnDelta = endTime - endTimes[column];
 
-            // If the difference between columnDeltas for the current note and last note is not greater than 10ms, we count this as an anchor, else break the anchor
+            // If the difference between columnDeltas for the current note and last note is not greater than 18ms, we count this as an anchor, else break the anchor
             // columnDelta is the difference between the current note's endTime and the last note's endTime
-            if (Precision.DefinitelyBigger(deltas[column], columnDelta, 10))
+            if (Precision.DefinitelyBigger(deltas[column], columnDelta, 47))
             {
                 this.anchorCount[column] = 0;
             }
@@ -120,7 +122,7 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
 
             // if our anchor is over 2 notes long we apply the buff
             if (anchorCount >= minAnchor)
-                individualStrain += 0.27 * anchorCount;
+                individualStrain += 0.47 * (anchorCount * 0.94);
 
             // we check adjacent columns, starting with the column to the left of this note, if there is one
             for (int adjacentColumn = Math.Max(0, column - 1); adjacentColumn < Math.Min(totalColumnsInMap - 1, column + 1); adjacentColumn++)
@@ -136,8 +138,38 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
                 // if there isn't an anchor in the column in the current note, we're also good
                 if (startTimes[adjacentColumn] > startTimes[column] && startTime - startTimes[adjacentColumn] < minTime && this.anchorCount[adjacentColumn] < 2)
                 {
-                    individualStrain += trillBuff;
+                    trillCount[column] = Math.Min(maxTrill, trillCount[column] + 1);
+
+                    individualStrain += individualStrains[adjacentColumn] * 0.2 * trillCount[column];
                 }
+                else
+                {
+                    trillCount[column] = 0;
+                }
+            }
+
+            //float msNerfThreshold = 130;
+            //bool applyNerf = false;
+
+            int checkStart = column >= handSplit ? handSplit : 0;
+            int checkEnd = column >= handSplit ? totalColumnsInMap - 2 : handSplit - 1;
+
+            int found = 0;
+
+            // check hand for easy one-hand anchors
+            for (int adjacentColumn = checkStart; adjacentColumn < checkEnd; adjacentColumn++)
+            {
+                int nextAdjacentColumn = adjacentColumn + 1;
+
+                if ((this.anchorCount[nextAdjacentColumn] > 4 && this.anchorCount[adjacentColumn] > 4) || Math.Abs(startTimes[adjacentColumn] - startTimes[nextAdjacentColumn]) >= 2000)
+                {
+                    found++;
+                }
+            }
+
+            if (found >= (checkEnd - checkStart))
+            {
+                individualStrain *= 0.37;
             }
 
             // Update startTimes and endTimes arrays
