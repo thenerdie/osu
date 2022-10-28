@@ -9,7 +9,7 @@ using osu.Game.Rulesets.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Difficulty.Skills;
 using osu.Game.Rulesets.Mania.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Mods;
-using osu.Framework.Logging;
+//using osu.Framework.Logging;
 //using System.Collections.Generic;
 
 namespace osu.Game.Rulesets.Mania.Difficulty.Skills
@@ -37,10 +37,10 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
         private int[] trillCount;
         private double[] deltas;
 
-        private int minAnchor = 2;
-        private int maxAnchor = 9;
+        private int minAnchor = 3;
+        //private int maxAnchor = 9;
 
-        private int maxTrill = 9;
+        private int maxTrill = 6; // i changed this
 
         public Strain(Mod[] mods, int totalColumns)
             : base(mods)
@@ -68,8 +68,6 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
             double holdFactor = 1.0; // Factor to all additional strains in case something else is held
             double holdAddition = 0; // Addition to the current note in case it's a hold and has to be released awkwardly
 
-            bool applyAnchorBuff = true;
-            bool applyTrillBuff = true;
             bool applyManipNerf = true;
 
             for (int i = 0; i < endTimes.Length; ++i)
@@ -110,21 +108,19 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
 
             double columnDelta = endTime - endTimes[column];
 
-            // If the difference between columnDeltas for the current note and last note is not greater than 18ms, we count this as an anchor, else break the anchor
+            // If the difference between columnDeltas for the current note and last note is not greater than 90ms, we count this as an anchor, else break the anchor
             // columnDelta is the difference between the current note's endTime and the last note's endTime
-            if (Precision.DefinitelyBigger(deltas[column], columnDelta, 80))
+            if (Precision.DefinitelyBigger(deltas[column], columnDelta, 90))
             {
-                this.anchorCount[column] = 0;
+                anchorCount[column] = 0;
             }
             else
             {
-                this.anchorCount[column]++;
+                anchorCount[column]++;
             }
 
-            // we don't give any MORE buff past 12 notes in a row
-            double anchorCount = Math.Min(maxAnchor, this.anchorCount[column]);
-
-            bool trillBuffApplied = false;
+            bool applyTrillBuff = false;
+            double trillBuff = 0;
 
             // we check adjacent columns, starting with the column to the left of this note, if there is 
             for (int adjacentColumn = Math.Max(0, column - 1); adjacentColumn < Math.Min(totalColumnsInMap - 1, column + 1); adjacentColumn++)
@@ -132,8 +128,17 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
                 if (adjacentColumn == column)
                     continue;
 
-                if (deltas[column] / deltas[adjacentColumn] > 1.8 && this.anchorCount[adjacentColumn] > minAnchor && this.anchorCount[column] <= minAnchor)
+                if (deltas[column] / deltas[adjacentColumn] > 1.6 && anchorCount[adjacentColumn] > minAnchor && anchorCount[column] <= minAnchor)
                 {
+                    for (int nextAdjacentColumn = 0; nextAdjacentColumn < totalColumnsInMap; nextAdjacentColumn++)
+                    {
+                        if (anchorCount[nextAdjacentColumn] >= minAnchor && nextAdjacentColumn != column)
+                        {
+                            individualStrain *= 1.65;
+                            break;
+                        }
+                    }
+
                     individualStrain *= 1.45;
                 }
 
@@ -143,16 +148,16 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
                 // if the startTime for the column we're looking at now is later than the current note, we have the shape of a trill
                 // if the difference between the current startTime and the last one falls within our minimum threshold, we're good
                 // if there isn't an anchor in the column in the current note, we're also good
-                if (startTimes[adjacentColumn] > startTimes[column] && startTime - startTimes[adjacentColumn] < minTime && this.anchorCount[adjacentColumn] < 3)
+                if (startTimes[adjacentColumn] > startTimes[column] && startTime - startTimes[adjacentColumn] < minTime && anchorCount[adjacentColumn] < 3)
                 {
                     trillCount[column] = Math.Min(maxTrill, trillCount[column] + 1);
 
                     // we add a buff to repeated trills
-                    if (applyTrillBuff)
-                    {
-                        trillBuffApplied = true;
-                        individualStrain += individualStrains[adjacentColumn] * 0.13 * trillCount[column];
-                    }
+
+                    anchorCount[column] = 0;
+                    applyTrillBuff = true;
+                    trillBuff = individualStrains[adjacentColumn] * 0.14 * trillCount[column] * 1.1;
+                    break;
                 }
                 else
                 {
@@ -163,7 +168,8 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
             int checkStart = column >= handSplit ? handSplit : 0;
             int checkEnd = column >= handSplit ? totalColumnsInMap - 2 : handSplit - 1;
 
-            int found = 0;
+            int anchorsFound = 0;
+            int highestTrillCount = 0;
 
             // check hand for easy one-hand anchors
             // we are assuming half of the playfield is for the left hand and the other half is for the right hand
@@ -173,21 +179,25 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Skills
             {
                 int nextAdjacentColumn = adjacentColumn + 1;
 
-                if ((this.anchorCount[nextAdjacentColumn] > 4 && this.anchorCount[adjacentColumn] > 4) || Math.Abs(startTimes[adjacentColumn] - startTimes[nextAdjacentColumn]) >= 800)
+                if ((anchorCount[nextAdjacentColumn] > 4 && anchorCount[adjacentColumn] > 4) || Math.Abs(startTimes[adjacentColumn] - startTimes[nextAdjacentColumn]) >= 800)
                 {
-                    found++;
+                    anchorsFound++;
                 }
+
+                highestTrillCount = Math.Max(trillCount[adjacentColumn], highestTrillCount);
             }
 
             // if the number of anchors in the hand found is >= number of columns in the hand, we can apply our nerf
-            if (found >= (checkEnd - checkStart) && applyManipNerf)
+            if (anchorsFound >= (checkEnd - checkStart) && applyManipNerf)
             {
-                individualStrain *= 0.25;
+                individualStrain *= 0.35;
             }
-            else if (anchorCount >= minAnchor && !trillBuffApplied && applyAnchorBuff)
+            else if (applyTrillBuff)
             {
-                // if our anchor is over 2 notes long we apply the buff
-                individualStrain += 0.1 * Math.Pow(anchorCount, 1.5);
+                if (trillCount[column] - highestTrillCount > 4)
+                    trillBuff *= 0.3 - 0.04;
+
+                individualStrain += trillBuff;
             }
 
             // Update startTimes and endTimes arrays
