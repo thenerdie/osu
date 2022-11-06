@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using osu.Framework.Utils;
 using osu.Game.Beatmaps;
 using osu.Game.Extensions;
 using osu.Game.Rulesets.Difficulty;
@@ -31,6 +32,8 @@ namespace osu.Game.Rulesets.Mania.Difficulty
         private readonly bool isForCurrentRuleset;
         private readonly double originalOverallDifficulty;
 
+        private int totalColumns;
+
         public override int Version => 20220902;
 
         public ManiaDifficultyCalculator(IRulesetInfo ruleset, IWorkingBeatmap beatmap)
@@ -38,6 +41,8 @@ namespace osu.Game.Rulesets.Mania.Difficulty
         {
             isForCurrentRuleset = beatmap.BeatmapInfo.Ruleset.MatchesOnlineID(ruleset);
             originalOverallDifficulty = beatmap.BeatmapInfo.Difficulty.OverallDifficulty;
+
+            totalColumns = (int)beatmap.BeatmapInfo.Difficulty.CircleSize;
         }
 
         protected override DifficultyAttributes CreateDifficultyAttributes(IBeatmap beatmap, Mod[] mods, Skill[] skills, double clockRate)
@@ -75,8 +80,34 @@ namespace osu.Game.Rulesets.Mania.Difficulty
 
             List<DifficultyHitObject> objects = new List<DifficultyHitObject>();
 
+            double[] startTimes = new double[totalColumns];
+            double[] endTimes = new double[totalColumns];
+            int[] anchorCount = new int[totalColumns];
+            int[] trillCount = new int[totalColumns];
+            double[] deltas = new double[totalColumns];
+
             for (int i = 1; i < sortedObjects.Length; i++)
-                objects.Add(new ManiaDifficultyHitObject(sortedObjects[i], sortedObjects[i - 1], clockRate, objects, objects.Count));
+            {
+                HitObject hitObject = sortedObjects[i];
+                int column = ((ManiaHitObject)hitObject).Column;
+                double columnDelta = hitObject.StartTime - startTimes[column];
+                double startTime = hitObject.StartTime;
+
+                if (Precision.DefinitelyBigger(deltas[column], columnDelta, 10))
+                {
+                    anchorCount[column] = 0;
+                }
+                else
+                {
+                    anchorCount[column]++;
+                }
+
+                objects.Add(new ManiaDifficultyHitObject(hitObject, sortedObjects[i - 1], clockRate, objects, objects.Count, anchorCount[column], trillCount[column], columnDelta));
+
+                startTimes[column] = hitObject.StartTime;
+                endTimes[column] = hitObject.GetEndTime();
+                deltas[column] = columnDelta;
+            }
 
             return objects;
         }
@@ -86,7 +117,7 @@ namespace osu.Game.Rulesets.Mania.Difficulty
 
         protected override Skill[] CreateSkills(IBeatmap beatmap, Mod[] mods, double clockRate) => new Skill[]
         {
-            new Strain(mods, ((ManiaBeatmap)Beatmap).TotalColumns)
+            new Strain(mods, totalColumns, getHitWindow300(mods))
         };
 
         protected override Mod[] DifficultyAdjustmentMods
